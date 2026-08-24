@@ -28,3 +28,4 @@ SellerSpark AI is an original human-in-the-loop creative workspace for small bus
 See `BUILD_FEST_SUBMISSION.md` for the evidence checklist, architecture, and 90-second demo script.
 
 The API key is server-side only. Never put it in `public/` or commit `.env`.
+Seller Spark AI is an AI powered assistant that helps small businesses create product descriptions, marketing content, and promo copy, fast.
