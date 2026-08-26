@@ -46,16 +46,20 @@ export async function generate(body = {}, fetchImpl = fetch) {
   if (!brief.trim()) throw new Error('A business brief is required');
   const base = action === 'regenerate' ? draft : '';
   const prompt = `You are SellerSpark AI, a human-in-the-loop content and creativity assistant for small businesses.\nMode: ${mode}.\nPlatform: ${platform}.\nTone: ${tone}.\nAudience: ${audience}.\nBrief: ${brief}.\n${base ? `Previous draft:\n${base}\nRegenerate with a meaningfully different angle while preserving useful facts.` : ''}\n${modeInstructions[mode]}\nImportant: do not invent statistics, prices, certifications, testimonials, or guarantees. If a factual claim is uncertain, phrase it cautiously so the app can flag it for human verification. Return only the finished draft. Keep it presentation-ready.`;
-
+'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
   if (!process.env.OPENAI_API_KEY) {
     const text = demoOutput({ mode, brief, tone, audience, platform });
     return { text, provider: 'demo-mode', model: null, flags: factFlags(text), live: false };
   }
-
-  const apiResponse = await fetchImpl('https://api.openai.com/v1/responses', {
+const apiResponse = await fetchImpl('https://api.openai.com/v1/responses', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
     'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-    headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},
-    body:JSON.stringify({ model, input:prompt })
+  },
+  body: JSON.stringify({ model, input: prompt }),
+});
+  
   });
   const payload = await apiResponse.json();
   if (!apiResponse.ok) throw new Error(payload?.error?.message || 'OpenAI request failed');
