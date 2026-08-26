@@ -1,4 +1,3 @@
-
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -88,8 +87,4 @@ test('generate rejects empty briefs', async () => {
 
 after(() => {
   proc.kill();
-}
-import test, { after } from 'node:test';
-import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { factFlags, demoOutput } from './server.mjs';
+});
