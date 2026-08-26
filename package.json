@@ -1,0 +1,8 @@
+{
+  "name":"sellerspark-ai",
+  "version":"1.0.0",
+  "private":true,
+  "description":"SellerSpark AI — BuildFest 2026 Track 2 prototype",
+  "type":"module",
+  "scripts":{"start":"node server.mjs","test":"node --test"}
+}
