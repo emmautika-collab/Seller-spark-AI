@@ -1,14 +1,59 @@
-const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+
+const MODEL = process.env.OPENAI_MODEL || "gpt-5.6";
+
+function response(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json"
+    }
+  });
+}
+
+const instructions = {
+  content:
+    "Create a high-converting marketing content asset for the business.",
+  social:
+    "Create a platform-ready social media post with an engaging hook and clear call to action.",
+  script:
+    "Create a short-form video script with a strong hook, clear scenes, and a call to action.",
+  branding:
+    "Create a compact brand direction covering positioning, voice, promise, and useful tagline ideas."
+};
+
+function localDemo({ mode, brief, tone, audience, platform, goal }) {
+  const instruction = instructions[mode] || instructions.content;
+
+  return `DEMO DRAFT
+
+${brief}
+
+${instruction}
+
+Target audience: ${audience || "General customers"}
+Tone: ${tone || "Professional"}
+Platform: ${platform || "Social media"}
+Goal: ${goal || "Awareness"}
+
+This is a rehearsal draft. Review and edit it before publishing.`;
+}
+
+function extractOutputText(payload) {
+  if (payload?.output_text) {
+    return payload.output_text.trim();
+  }
+
+  return (payload?.output || [])
+    .flatMap((item) => item?.content || [])
+    .filter((item) => item?.type === "output_text")
+    .map((item) => item?.text || "")
+    .join("\n")
+    .trim();
+}
 
 export default async (request) => {
   if (request.method !== "POST") {
-    return new Response(
-      JSON.stringify({ error: "Method not allowed" }),
-      {
-        status: 405,
-        headers: { "Content-Type": "application/json" }
-      }
-    );
+    return response({ error: "Method not allowed" }, 405);
   }
 
   try {
@@ -19,32 +64,36 @@ export default async (request) => {
       brief = "",
       tone = "professional",
       audience = "",
+      platform = "",
+      goal = "",
       action = "generate",
       draft = ""
     } = body;
 
+    if (!instructions[mode]) {
+      return response({ error: "Unsupported assistant mode." }, 400);
+    }
+
     if (!brief.trim()) {
-      return new Response(
-        JSON.stringify({ error: "A business brief is required." }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" }
-        }
+      return response(
+        { error: "A business brief is required." },
+        400
       );
     }
 
-    const instructions = {
-      content: "Create a high-converting content asset.",
-      social: "Create a platform-ready social media post.",
-      script: "Create a short-form video script with a strong hook.",
-      branding: "Create a compact brand direction with positioning and core message."
-    };
+    const instruction = instructions[mode];
 
-    const instruction =
-      instructions[mode] || instructions.content;
+    const regenerationInstruction =
+      action === "regenerate" && draft.trim()
+        ? `
 
-    const prompt = `
-You are SellerSpark AI, a human-in-the-loop creative assistant.
+Previous draft:
+${draft}
+
+Create a substantially different version. Do not simply repeat the previous wording.`
+        : "";
+
+    const prompt = `You are SellerSpark AI, a human-in-the-loop creative assistant.
 
 ${instruction}
 
@@ -55,39 +104,48 @@ Target audience:
 ${audience || "General customers"}
 
 Tone:
-${tone}
+${tone || "Professional"}
 
-${action === "regenerate" && draft
-  ? `Previous draft:\n${draft}\nCreate a substantially different version.`
-  : ""}
+Platform:
+${platform || "Social media"}
 
-Produce a useful, original draft.
-Avoid unsupported factual claims.
-Return only the draft content.
-`;
+Goal:
+${goal || "Awareness"}
+${regenerationInstruction}
 
+Create an original, useful draft.
+
+Do not invent specific facts, prices, statistics, guarantees, medical claims, or unsupported superlatives.
+
+Return only the draft content.`;
+
+    // Demo mode allows the app to work even when no API key is configured.
     if (!process.env.OPENAI_API_KEY) {
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          provider: "demo-mode",
-          model: null,
-          text: `DEMO DRAFT\n\n${brief}\n\n${instruction}\n\nTone: ${tone}\nAudience: ${audience || "General customers"}`
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" }
-        }
-      );
+      const text = localDemo({
+        mode,
+        brief,
+        tone,
+        audience,
+        platform,
+        goal
+      });
+
+      return response({
+        ok: true,
+        provider: "demo-mode",
+        model: null,
+        text,
+        generatedAt: new Date().toISOString()
+      });
     }
 
-    const response = await fetch(
+    const apiResponse = await fetch(
       "https://api.openai.com/v1/responses",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
         },
         body: JSON.stringify({
           model: MODEL,
@@ -96,55 +154,45 @@ Return only the draft content.
       }
     );
 
-    const data = await response.json();
+    const payload = await apiResponse.json();
 
-    if (!response.ok) {
-      return new Response(
-        JSON.stringify({
-          error: data?.error?.message || "OpenAI request failed."
-        }),
+    if (!apiResponse.ok) {
+      return response(
         {
-          status: response.status,
-          headers: { "Content-Type": "application/json" }
-        }
+          error:
+            payload?.error?.message ||
+            "OpenAI request failed."
+        },
+        apiResponse.status
       );
     }
 
-    const text =
-      data?.output_text ||
-      data?.output
-        ?.flatMap(item => item.content || [])
-        ?.filter(item => item.type === "output_text")
-        ?.map(item => item.text)
-        ?.join("\n")
-        ?.trim();
+    const text = extractOutputText(payload);
 
     if (!text) {
-      throw new Error("The AI returned an empty draft.");
+      return response(
+        { error: "The AI returned an empty draft." },
+        502
+      );
     }
 
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        provider: "OpenAI Responses API",
-        model: MODEL,
-        text
-      }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      }
-    );
-
+    return response({
+      ok: true,
+      provider: "OpenAI Responses API",
+      model: MODEL,
+      text,
+      generatedAt: new Date().toISOString()
+    });
   } catch (error) {
-    return new Response(
-      JSON.stringify({
-        error: error.message || "Generation failed."
-      }),
+    console.error("SellerSpark generation error:", error);
+
+    return response(
       {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      }
+        error:
+          error?.message ||
+          "Generation failed."
+      },
+      500
     );
   }
 };
